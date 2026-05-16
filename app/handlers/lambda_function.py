@@ -18,15 +18,9 @@ import urllib.request
 from typing import Any
 
 
-# ─── 定数 ───────────────────────────────────────────────────────
-
-TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-TELEGRAM_API = f"https://api.telegram.org/bot{TOKEN}"
-
-
 # ─── Telegram API 呼び出し ──────────────────────────────────────
 
-def send_message(chat_id: int, text: str) -> None:
+def send_message(telegram_api: str, chat_id: int, text: str) -> None:
     """Telegram に sendMessage リクエストを送る。"""
     payload = json.dumps({
         "chat_id": chat_id,
@@ -34,7 +28,7 @@ def send_message(chat_id: int, text: str) -> None:
     }).encode("utf-8")
 
     req = urllib.request.Request(
-        url=f"{TELEGRAM_API}/sendMessage",
+        url=f"{telegram_api}/sendMessage",
         data=payload,
         headers={"Content-Type": "application/json"},
         method="POST",
@@ -54,9 +48,12 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     メッセージを受け取ってそのままオウム返しする。
     """
     # ── 環境変数チェック ──────────────────────────────────────
-    if not TOKEN:
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    if not token:
         print("[ERROR] TELEGRAM_BOT_TOKEN が設定されていません")
         return {"statusCode": 500, "body": "token missing"}
+
+    telegram_api = f"https://api.telegram.org/bot{token}"
 
     # ── ボディのパース ────────────────────────────────────────
     try:
@@ -76,6 +73,6 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
     # ── オウム返し ────────────────────────────────────────────
     print(f"[MSG] chat_id={chat_id} text={text!r}")
-    send_message(chat_id, f"🦜 {text}")
+    send_message(telegram_api, chat_id, f"🦜 {text}")
 
     return {"statusCode": 200, "body": "ok"}
