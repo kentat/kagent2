@@ -2,14 +2,14 @@
 Queue abstraction layer.
 
 ローカル/Railway : BackgroundTasks でインプロセス非同期実行
-Lambda 本番      : SQS にメッセージを投げて別 Lambda を起動
+Lambda 本番      : SQS にメッセージを投げて Worker Lambda を起動
 
-差し替えは QUEUE_BACKEND 環境変数で切り替える（将来）。
-現時点はすべて LocalQueue。
+切り替えは SQS_QUEUE_URL 環境変数の有無で自動判定する。
 """
 
-import asyncio
+import json
 import logging
+import os
 from typing import Callable, Awaitable
 
 from fastapi import BackgroundTasks
@@ -39,14 +39,14 @@ class LocalQueue:
 
 class SQSQueue:
     """
-    Lambda 本番用 SQS キュー（未実装・将来のプレースホルダー）。
-
-    実装時は boto3 で SQS にメッセージを投げ、
-    別の Lambda 関数がトリガーされてタスクを実行する。
+    Lambda 本番用 SQS キュー。
+    タスク名を SQS に投げ、Worker Lambda がそれを受けて実行する。
     """
 
-    def __init__(self, queue_url: str):
+    def __init__(self, queue_url: str) -> None:
+        import boto3
         self.queue_url = queue_url
+        self._client = boto3.client("sqs", region_name="ap-northeast-1")
 
     async def enqueue(
         self,
@@ -54,12 +54,16 @@ class SQSQueue:
         task_fn: Callable[[], Awaitable[None]],
         task_name: str,
     ) -> None:
-        raise NotImplementedError(
-            "SQSQueue は未実装です。Lambda 移行フェーズで実装してください。"
+        logger.info(f"[SQSQueue] enqueue: {task_name}")
+        self._client.send_message(
+            QueueUrl=self.queue_url,
+            MessageBody=json.dumps({"task": task_name}),
         )
 
 
-# アプリ全体で使うキューインスタンス
-# 将来: os.getenv("QUEUE_BACKEND") == "sqs" なら SQSQueue を返す
-def get_queue() -> LocalQueue:
+def get_queue() -> LocalQueue | SQSQueue:
+    """SQS_QUEUE_URL が設定されていれば SQSQueue、なければ LocalQueue を返す。"""
+    queue_url = os.environ.get("SQS_QUEUE_URL", "")
+    if queue_url:
+        return SQSQueue(queue_url)
     return LocalQueue()
